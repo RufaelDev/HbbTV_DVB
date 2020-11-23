@@ -205,7 +205,8 @@ function DVB_HbbTV_cross_profile_check($mpdreport){
     global $mpd_dom;
     $profiles = $mpd_dom->getAttribute('profiles');
     
-    $supported_profiles = array('urn:mpeg:dash:profile:isoff-on-demand:2011', 'urn:mpeg:dash:profile:isoff-live:2011', 
+    $supported_profiles = array('urn:mpeg:dash:profile:isoff-on-demand:2011','urn:dvb:dash:profile:dvb-dash:2017',  
+                                'urn:mpeg:dash:profile:isoff-live:2011', 
                                 'urn:mpeg:dash:profile:isoff-main:2011', 'http://dashif.org/guidelines/dash264', 
                                 'urn:dvb:dash:profile:dvb-dash:2014', 'urn:hbbtv:dash:profile:isoff-live:2012',
                                 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014', 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014');
@@ -290,11 +291,11 @@ function DVB_mpdvalidator($mpdreport){
     
     ## Information from this part is used for Section 4.1 and 11.1 checks
     $profiles = $mpd_dom->getAttribute('profiles');
-    if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && strpos($profiles, 'urn:hbbtv:dash:profile:isoff-live:2012') === FALSE)
+    if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && strpos($profiles, 'urn:hbbtv:dash:profile:isoff-live:2012') === FALSE && strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') == FALSE  )
         fwrite($mpdreport, "###'DVB check violated: Section E.2.1- The MPD SHALL indicate either or both of the following profiles: \"urn:dvb:dash:profile:dvb-dash:2014\" and \"urn:hbbtv:dash:profile:isoff-live:2012\"', specified profile could not be found.\n");
     
     $profile_exists = false;
-    if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && (strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014') === FALSE || strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === FALSE))
+    if((strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') == FALSE ) && (strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014') === FALSE || strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === FALSE))
         fwrite($mpdreport, "Warning for DVB check: Section 11.1- 'All Representations that are intended to be decoded and presented by a DVB conformant Player SHOULD be such that they will be inferred to have an @profiles attribute that includes the profile name defined in clause 4.1 as well as either the one defined in 4.2.5 or the one defined in 4.2.8', found profiles: $profiles.\n");
     elseif(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === TRUE && (strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014') === TRUE || strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === TRUE))
         $profile_exists = true;
@@ -307,6 +308,10 @@ function DVB_mpdvalidator($mpdreport){
             if($BaseURL->getAttribute('serviceLocation') != '' && $BaseURL->getAttribute('priority') != '' && $BaseURL->getAttribute('weight') != '')
                 fwrite($mpdreport, "Warning for DVB check: Section 11.9.5- 'Where BaseURLs contain relative URLs, these SHOULD NOT include @serviceLocation, @priority or @weight attributes', however found in this MPD.\n");
         }
+	    if($BaseURL->getAttribute('availabilityTimeComplete') !='')
+		   fwrite($mpdreport, "###'DVB check violated for DVB check: Section 4.2.9- The similarly named  BaseURL@availabilityTimeComplete attributes are not used for the purposes of low latency live streaming.' \n");
+	    if($BaseURL->getAttribute('availabilityTimeOffset') !='')
+		   fwrite($mpdreport, "###'DVB check violated Section 4.2.9- The similarly named BaseURL@availabilityTimeOffset and BaseURL@availabilityTimeComplete attributes are not used for the purposes of low latency live streaming.' \n");
     }
     ##
     
@@ -328,12 +333,12 @@ function DVB_mpdvalidator($mpdreport){
                         if($reporting->getAttribute('probability') != ''){
                             $probability = $reporting->getAttribute('probability');
                             if(!(((string) (int) $probability === $probability) && ($probability <= 1000) && ($probability >= 1)))
-                                fwrite($mpdreport, "Information on DVB conformance: Section 10.12.3 - value of the @probability attribute in the Reporting descriptor needs to be a positive integer between 0 and 1000.\n");
+                                fwrite($mpdreport, "Information on DVB conformance: Section 10.12.3 - value of the @probability attribute in the Reporting descriptor needs to be a positive integer between 1 and 1000.\n");
                         }
                         if($reporting->getAttribute('dvb:probability') != ''){
                             $probability = $reporting->getAttribute('dvb:probability');
                             if(!(((string) (int) $probability === $probability) && ($probability <= 1000) && ($probability >= 1)))
-                                fwrite($mpdreport, "Information on DVB conformance: Section 10.12.3 - value of the @probability attribute in the Reporting descriptor needs to be a positive integer between 0 and 1000.\n");
+                                fwrite($mpdreport, "Information on DVB conformance: Section 10.12.3 - value of the @probability attribute in the Reporting descriptor needs to be a positive integer between 1 and 1000.\n");
                         }
                     }
                 }
@@ -373,6 +378,20 @@ function DVB_mpdvalidator($mpdreport){
     }
     
     foreach($mpd_dom->childNodes as $node){
+		if($node->nodeName == 'ServiceDecription')
+		{
+            //fwrite($mpdreport, "###DVB info: Service Description found, this is targets low latency, was this intended ? \n");
+			$latency_elems = $node->getElementsByTagName('Latency');
+            $latency_elems_len = $latency_elems->length;
+			$playbackrate_elems = $node->getElementsByTagName('PlaybackRate');
+            $playbackrate_len = $latency_elems->length;
+			if($playbackrate_len > 1 ||  $latency_elems_len > 1)
+				 fwrite($mpdreport, "###'DVB check violated: Section 4.2.9- A ServiceDescription \
+			 element containing zero or one Latency elements and zero or one PlaybackRate elements \
+			 should be used to describe low latency content, positioned at either the MPD or Period \
+			 level as appropriate. found $playbackrate_len PlaybackRate elements \
+			 and $latency_elems_len latency elements \n");
+        }
         if($node->nodeName == 'Period'){
             $period_count++;
             $adapt_video_count = 0; 
@@ -390,6 +409,21 @@ function DVB_mpdvalidator($mpdreport){
                     if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === TRUE)
                         fwrite($mpdreport, "###'DVB check violated: Section 4.2.6- The Period.SegmentTemplate SHALL not be present for Period elements conforming to On Demand profile', but found in Period $period_count.\n");
                 }
+				if($child->nodename == 'ServiceDecription')
+				{
+                    //fwrite($mpdreport, "###DVB info: Service Description found, this is targets low latency, was this intended ? \n");
+			        $latency_elems = $node->getElementsByTagName('Latency');
+                    $latency_elems_len = $latency_elems->length;
+			        $playbackrate_elems = $node->getElementsByTagName('PlaybackRate');
+                    $playbackrate_len = $latency_elems->length;
+			        if($playbackrate_len > 1 ||  $latency_elems_len > 1)
+				        fwrite($mpdreport, "###'DVB check violated: Section 4.2.9- A ServiceDescription \
+			            element containing zero or one Latency elements and zero or one PlaybackRate elements \
+			            should be used to describe low latency content, positioned at either the MPD or Period \
+			            level as appropriate. found $playbackrate_len PlaybackRate elements \
+			            and $latency_elems_len latency elements \n");
+                }
+				
             }
             
             // Adaptation Sets within each Period
@@ -408,7 +442,7 @@ function DVB_mpdvalidator($mpdreport){
                 $adapt_profile_exists = false;
                 $adapt_profiles = $adapt->getAttribute('profiles');
                 if($profile_exists && $adapt_profiles != ''){
-                    if(strpos($adapt_profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && (strpos($adapt_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014') === FALSE || strpos($adapt_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === FALSE))
+                    if((strpos($adapt_profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && strpos($adapt_profiles, 'urn:dvb:dash:profile:dvb-dash:2017') == FALSE)  && (strpos($adapt_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014') === FALSE || strpos($adapt_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === FALSE))
                         fwrite($mpdreport, "Warning for DVB check: Section 11.1- 'All Representations that are intended to be decoded and presented by a DVB conformant Player SHOULD be such that they will be inferred to have an @profiles attribute that includes the profile name defined in clause 4.1 as well as either the one defined in 4.2.5 or the one defined in 4.2.8', found profiles: $adapt_profiles.\n");
                     else
                         $adapt_profile_exists = true;
@@ -427,6 +461,25 @@ function DVB_mpdvalidator($mpdreport){
                             $contentTemp_vid_found = true;
                         if($ch->getAttribute('contentType') == 'audio')
                             $contentTemp_aud_found = true;
+                    }
+					if($ch->nodeName == 'segmentTemplate')
+					{
+                       if($ch->getAttribute('duration') !='')
+					   {
+						  if($ch->getAttribute('timescale')!='' &&  $ch->getAttribute('availabilityTimeOffset') !='')
+					      {
+							  if( floatval($ch->getAttribute('availabilityTimeOffset')) >  floatval ($ch->getAttribute('duration')) / floatval($ch->getAttribute('timescale')))
+								  fwrite($mpdreport, "###DVB check violated for DVB check: Section 4.2.9 - 'The value of SegmentTemplate@availabilityTimeOffset shall not exceed the segment duration given by SegmentTemplate@duration divided by the value of appropriate @timescale attribute', found profiles:" + $ch->getAttribute('availabilityTimeOffset') + ".\n");
+						  }
+						  $seg_dur_template_check = floatval($ch->getAttribute('duration')) / floatval($ch->getAttribute('timescale'));
+						  
+						  //if($seg_dur_template_check  <= 1.5)
+							//  fwrite($mpdreport, "###DVB info section 10.20.5: (Low latency) AdaptationSet has Representations with a SegmentTemplate specifying a @duration attribute and the maximum duration of segments in all the Representations of the AdaptationSet is 1.5 seconds or less. found $seg_dur_template_check this implies low latency .\n");
+				          
+						  //if($ch->getAttribute('availabilityTimeComplete')  == 'false' || $ch->getAttribute('availabilityTimeComplete')  == 'FALSE' || $ch->getAttribute('availabilityTimeComplete')  == 'False')
+							//  fwrite($mpdreport, "###DVB info section 10.20.5: (Low latency) The AdaptationSet has the SegmentTemplate@availabilityTimeComplete attribute set to \"false\". , note this adaptation set is low latency .\n");
+					   }
+					   
                     }
                     if($ch->nodeName == 'Representation'){
                         if($profile_exists && ($adapt_profiles == '' || $adapt_profile_exists)){
@@ -449,18 +502,30 @@ function DVB_mpdvalidator($mpdreport){
                                 if($c->nodeName == 'SubRepresentation'){
                                     $subrep_profiles = $c->getAttribute('profiles');
                                     if($subrep_profiles != ''){
-                                        if(strpos($subrep_profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && (strpos($subrep_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014') === FALSE || strpos($subrep_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === FALSE))
+                                        if(strpos($subrep_profiles, 'urn:dvb:dash:profile:dvb-dash:2014') === FALSE && strpos($subrep_profiles, 'urn:dvb:dash:profile:dvb-dash:2017') === FALSE && (strpos($subrep_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-live:2014') === FALSE || strpos($subrep_profiles, 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') === FALSE))
                                             fwrite($mpdreport, "Warning for DVB check: Section 11.1- 'All Representations that are intended to be decoded and presented by a DVB conformant Player SHOULD be such that they will be inferred to have an @profiles attribute that includes the profile name defined in clause 4.1 as well as either the one defined in 4.2.5 or the one defined in 4.2.8', found profiles: $subrep_profiles.\n");
                                     }
                                 }
                             }
                         }
                     }
+					if($ch->nodeName == 'SupplementalProperty' || $ch->nodeName == 'EssentialProperty')
+					{
+						// if ($ch->getAttribute("schemeIdUri") == "urn:dvb:dash:lowlatency:critical:2019")
+						//	 fwrite($mpdreport, "###DVB info section 10.20.5: (Low latency) The AdaptationSet is marked with an EssentialProperty or SupplementalProperty descriptor with the @schemeIdUri attribute of \"urn:dvb:dash:lowlatency:critical:2019\" and the @value attribute set to \"true\".. , note this adaptation set is low latency .\n");
+							
+					}
+					if($ch->nodeName == 'EssentialProperty')
+					{
+						
+					}
                 }
                 
+				
+				
                 if($adapt->getAttribute('contentType') == 'video' || $contentTemp_vid_found || $video_found || strpos($adapt->getAttribute('mimeType'), 'video') !== FALSE){
                     $video_service = true;
-                    DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found);
+                    DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found, $profiles);
                     
                     if($contentTemp_aud_found){
                         DVB_audio_checks($adapt, $reps, $mpdreport, $i, $contentTemp_aud_found);
@@ -470,7 +535,7 @@ function DVB_mpdvalidator($mpdreport){
                     DVB_audio_checks($adapt, $reps, $mpdreport, $i, $contentTemp_aud_found);
                     
                     if($contentTemp_vid_found){
-                        DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found);
+                        DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found, $profiles);
                     }
                     
                     $audio_adapts[] = $adapt;
@@ -482,7 +547,7 @@ function DVB_mpdvalidator($mpdreport){
                 if($adapt_video_count > 1 && $main_video_found == false)
                     fwrite($mpdreport, "###'DVB check violated: Section 4.2.2- If a Period element contains multiple Adaptation Sets with @contentType=\"video\" then at least one Adaptation Set SHALL contain a Role element with @schemeIdUri=\"urn:mpeg:dash:role:2011\" and @value=\"main\"', could not be found in Period $period_count.\n");
                 
-                DVB_content_protection($adapt, $reps, $mpdreport, $i, $cenc);
+                DVB_content_protection($adapt, $reps, $mpdreport, $i, $cenc, $profiles);
             }
             
             if($video_service){
@@ -895,7 +960,7 @@ function DVB_event_checks($possible_event, $mpdreport){
     }
 }
 
-function DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found){
+function DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found, $profiles=''){
     global $adapt_video_count, $main_video_found, $period_count, $video_bw;
     
     ## Information from this part is used for Section 4.2.2 check about multiple Adaptation Sets with video as contentType
@@ -925,7 +990,8 @@ function DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found)
             if($ch->getAttribute('schemeIdUri') == 'urn:dvb:dash:fontdownload:2014' && $ch->getAttribute('value') == '1'){
                 if(($ch->getAttribute('url') != '' || $ch->getAttribute('dvburl') != '') && ($ch->getAttribute('fontFamily') != '' || $ch->getAttribute('dvb:fontFamily') != '') && ($ch->getAttribute('mimeType') != '' || $ch->getAttribute('dvb:mimeType') != ''))
                     fwrite($mpdreport, "###'DVB check violated: Section 7.2.1.1- For DVB font download for subtitles, a descriptor with these properties SHALL only be placed within an Adaptation Set containing subtitle Representations', found EssentialProperty element signaling downloadable fonts in video Adaptation Set in Period $period_count Adaptation Set " . ($i+1) . ".\n");
-            }
+                  
+			}
         }
     }
     ##
@@ -933,14 +999,25 @@ function DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found)
     $adapt_width_present = true; 
     $adapt_height_present = true; 
     $adapt_frameRate_present = true;
+	
+	if($adapt->getAttribute('width') != '')
+	   $adapt_width_number=$adapt->getAttribute('width');
+    if($adapt->getAttribute('height') != '')
+	   $adapt_height_number=$adapt->getAttribute('height');
     if($adapt->getAttribute('width') == '')
-        $adapt_width_present = false;
+       $adapt_width_present = false;
     if($adapt->getAttribute('height') == '')
         $adapt_height_present = false;
     if($adapt->getAttribute('frameRate') == '')
         $adapt_frameRate_present = false;
     
+	$adapt_dar_ratio = 16/9;
+	if( $adapt_height_present && $adapt_width_present)
+	    $adapt_dar_ratio =  intval($adapt_width_number) / intval($adapt_height_number);
+	
     $adapt_codecs = $adapt->getAttribute('codecs');
+	
+	
     $reps_len = $reps->length;
     $reps_codecs = array();
     $subreps_codecs = array();
@@ -952,16 +1029,40 @@ function DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found)
         $reps_height[] = $rep->getAttribute('height');
         $reps_frameRate[] = $rep->getAttribute('frameRate');
         $reps_scanType[] = $rep->getAttribute('scanType');
+		
+		$rep_width_number=$rep->getAttribute('width');
+	    $rep_height_number=$adapt->getAttribute('height');
+	    $rep_dar_ratio =  $adapt_dar_ratio;
+		
+		if($rep_width_number != '' && $rep_height_number != '' )
+	        $rep_dar_ratio =  intval($rep_width_number) / intval($rep_height_number);
         
-        if($adapt->getAttribute('contentType') == 'video'){
+        if($adapt->getAttribute('contentType') == 'video')
+        {
             if($adapt_width_present == false && $rep->getAttribute('width') == '')
                 fwrite($mpdreport, "###'DVB check violated: Section 4.4- For any Representation within an Adaptation Set with @contentType=\"video\" @width attribute SHALL be present if not in the AdaptationSet element', could not be found in neither Period $period_count Adaptation Set " . ($i+1) . " nor Period $period_count Adaptation Set " . ($i+1) . " Representation " . ($j+1) . ".\n");
             if($adapt_height_present == false && $rep->getAttribute('height') == '')
                 fwrite($mpdreport, "###'DVB check violated: Section 4.4- For any Representation within an Adaptation Set with @contentType=\"video\" @height attribute SHALL be present if not in the AdaptationSet element', could not be found in neither Period $period_count Adaptation Set " . ($i+1) . " nor Period $period_count Adaptation Set " . ($i+1) . " Representation " . ($j+1) . ".\n");
             if($adapt_frameRate_present == false && $rep->getAttribute('frameRate') == '')
                 fwrite($mpdreport, "###'DVB check violated: Section 4.4- For any Representation within an Adaptation Set with @contentType=\"video\" @frameRate attribute SHALL be present if not in the AdaptationSet element', could not be found in neither Period $period_count Adaptation Set " . ($i+1) . " nor Period $period_count Adaptation Set " . ($i+1) . " Representation " . ($j+1) . ".\n");
-            if($adapt->getAttribute('sar') == '' && $rep->getAttribute('sar') == '')
+            else 
+			{
+				$frame_rate_dvb_check=-1;
+				$dvb_framerates = array(25, 50, 100, 30/1.001, 60/1.001, 120/1.001, 30, 60, 120, 24, 24/1.001 );
+			   	if($rep->getAttribute('frameRate') != '')
+					$frame_rate_dvb_check = floatval($rep->getAttribute('frameRate'));
+				else if($adapt->getAttribute('frameRate') != '')
+					$frame_rate_dvb_check = floatval($adapt->getAttribute('frameRate'));
+				
+				if(!in_array($frame_rate_dvb_check ,$dvb_framerates))
+				    fwrite($mpdreport, "###'DVB check violated: Section 10.4- Frame rate, providing the frame rate is within one of the following families : 100 fps , 120/1,001 fps ,120 fps, 24 fps '" + ".\n");
+				
+			}
+			if($adapt->getAttribute('sar') == '' && $rep->getAttribute('sar') == '')
                 fwrite($mpdreport, "Warning for DVB check: Section 4.4- 'For any Representation within an Adaptation Set with @contentType=\"video\" @sar attribute SHOULD be present or inherited from the Adaptation Set', could not be found in neither Period $period_count Adaptation Set " . ($i+1) . " nor Period $period_count Adaptation Set " . ($i+1) . " Representation " . ($j+1) . ".\n");
+		    if( $rep_dar_ratio < 1.7 || $rep_dar_ratio  > 1.8 )
+				if(($adapt->getAttribute('sar') == '' && $rep->getAttribute('sar') == '') && (($adapt->getAttribute('par') == '' && $rep->getAttribute('par') == '')) )
+                    fwrite($mpdreport, "###DVB check violated: Section 4.4- For any Representation within an Adaptation Set with @contentType=\"video\" For any Representation within an AdaptationSet with @contentType=\"video\" for which the picture aspect ratio is other than 16:9, at least one of the attributes @par and @sar shall be present or inherited from the AdaptationSet', could not be found in neither Period $period_count Adaptation Set " . ($i+1) . " nor Period $period_count Adaptation Set " . ($i+1) . " Representation " . ($j+1) . ".\n");
         }
         ##
         
@@ -987,39 +1088,115 @@ function DVB_video_checks($adapt, $reps, $mpdreport, $i, $contentTemp_vid_found)
         ##
     }
     
-    ## Information from this part is used for Section 5.1 AVC codecs
-    if((strpos($adapt_codecs, 'avc') !== FALSE)){
-        $codec_parts = array();
-        $codecs = explode(',', $adapt_codecs);
-        foreach($codecs as $codec){
-            if(strpos($codec, 'avc') !== FALSE){
-                $codec_parts = explode('.', $codec);
-                $pcl = strlen($codec_parts[1]);
-                if($pcl != 6)
-                    fwrite($mpdreport, "###'DVB check violated: Section 5.1.3- If (AVC video codec is) present the value of @codecs attribute SHALL be set in accordance with RFC 6381, clause 3.3', not found or not complete within Period $period_count Adaptation Set " . ($i+1) . ".\n");
-            }
+	## regular expressions for checking the codec signalling
+	$pattern_avc =  "/avc[1-4]/";
+	$pattern_hevc = "/(hev1|hvc1)/";
+	
+	$pattern_for_rfc6381 = "/avc[1-4]\.[A-Fa-f0-9]{6}/";
+	$pattern_hevcsignal  = "/(hev1|hvc1)\.[a-zA-Z]?\d{1,3}\.[0-9a-fA-F]{1,8}\.[LH]\d{1,3}/";
+	
+	## todo add a check that actually the right codecs are used, right now once can sneak in other video codecs ?
+
+    $codecs = explode(',', $adapt_codecs);
+    foreach($codecs as $codec)
+	{
+		if(preg_match($pattern_avc , $codec))
+	    {
+			if(! preg_match($pattern_for_rfc6381 , $codec) )
+			{
+			    if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') != FALSE )
+					fwrite($mpdreport, "###DVB check violated section 5.1.3: For representations in the scope of the DVB-DASH 2017 profile, these shall be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 6381 [5], clause 3.3 . found  $codec \n");
+			    else 
+					fwrite($mpdreport, "###DVB warning section 5.1.3: For representations in the scope of the DVB-DASH 2014 profile, these should be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 6381 [5], clause 3.3  found  $codec  .\n");
+			}
         }
-    }
-    foreach($reps_codecs as $rep_codecs){
+		elseif(preg_match($pattern_hevc , $codec))
+	    {
+            if(! preg_match($pattern_hevcsignal  , $codec) )
+			{
+				if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') != FALSE )
+				    fwrite($mpdreport, "###DVB check violated section 5.2.2: For representations in the scope of the DVB-DASH 2017 profile, these shall be signalled. If present, the value of the @codecs attribute shall be set in accordance with RFC 5234   [28] . found  $codec \n");
+				else 
+				    fwrite($mpdreport, "###DVB warning section 5.2.2: For representations in the scope of the DVB-DASH 2014 profile, these should be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 5234  [28] found  $codec  .\n");
+			}
+	    }
+		elseif($codec=='')
+		{
+			
+		}
+		else
+		{
+			fwrite($mpdreport, "###DVB check violated section 5: onlny HEVC, AVC supported for video . found  $codec \n");
+		}
+	}
+	
+    foreach($reps_codecs as $rep_codecs)
+	{
         $codecs = explode(',', $rep_codecs);
-        foreach($codecs as $codec){
-            if(strpos($codec, 'avc') !== FALSE){
-                $codec_parts = explode('.', $codec);
-                $pcl = strlen($codec_parts[1]);
-                if($pcl != 6)
-                    fwrite($mpdreport, "###'DVB check violated: Section 5.1.3- If (AVC video codec is) present the value of @codecs attribute SHALL be set in accordance with RFC 6381, clause 3.3', not found or not complete within Period $period_count Adaptation Set " . ($i+1) . ".\n");
+        foreach($codecs as $codec)
+		{
+            if(preg_match($pattern_avc , $codec))
+			{
+				 if(! preg_match($pattern_for_rfc6381 , $codec) )
+				 {
+					 if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') != FALSE )
+						fwrite($mpdreport, "###DVB check violated section 5.1.3: For representations in the scope of the DVB-DASH 2017 profile, these shall be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 6381 [5], clause 3.3 . found  $adapt_codecs \n");
+					 else 
+						fwrite($mpdreport, "###DVB warning section 5.1.3: For representations in the scope of the DVB-DASH 2014 profile, these should be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 6381 [5], clause 3.3  found  $adapt_codecs  .\n");
+				}
             }
+			elseif(preg_match($pattern_hevc , $codec))
+			{
+				if(! preg_match($pattern_hevcsignal  , $codec) )
+				{
+					 if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') != FALSE )
+						fwrite($mpdreport, "###DVB check violated section 5.2.2: For representations in the scope of the DVB-DASH 2017 profile, these shall be signalled. If present, the value of the @codecs attribute shall be set in accordance with RFC 5234   [28] . found  $codec \n");
+					 else 
+						fwrite($mpdreport, "###DVB warning section 5.2.2: For representations in the scope of the DVB-DASH 2014 profile, these should be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 5234  [28] found  $codec  .\n");
+				}
+			}
+			elseif($codec=='')
+		    {
+			
+		    }
+		    else
+		    {
+			    fwrite($mpdreport, "###DVB check violated section 5: onlny HEVC, AVC supported for video . found  $codec \n");
+		    }
         }
+		
     }
-    foreach($subreps_codecs as $subrep_codecs){
+    foreach($subreps_codecs as $subrep_codecs)
+	{
         $codecs = explode(',', $subrep_codecs);
         foreach($codecs as $codec){
-            if(strpos($codec, 'avc') !== FALSE){
-                $codec_parts = explode('.', $codec);
-                $pcl = strlen($codec_parts[1]);
-                if($pcl != 6)
-                    fwrite($mpdreport, "###'DVB check violated: Section 5.1.3- If (AVC video codec is) present the value of @codecs attribute SHALL be set in accordance with RFC 6381, clause 3.3', not found or not complete within Period $period_count Adaptation Set " . ($i+1) . ".\n");
+            if(preg_match($pattern_avc , $codec))
+			{
+				 if(! preg_match($pattern_for_rfc6381 , $codec) )
+				 {
+					 if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') != FALSE )
+						fwrite($mpdreport, "###DVB check violated section 5.1.3: For representations in the scope of the DVB-DASH 2017 profile, these shall be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 6381 [5], clause 3.3 . found  $adapt_codecs \n");
+					 else 
+						fwrite($mpdreport, "###DVB warning section 5.1.3: For representations in the scope of the DVB-DASH 2014 profile, these should be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 6381 [5], clause 3.3  found  $adapt_codecs  .\n");
+				}
             }
+			elseif(preg_match($pattern_hevc , $codec)){
+				if(! preg_match($pattern_hevcsignal  , $codec) )
+				{
+					 if(strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2017') != FALSE )
+						fwrite($mpdreport, "###DVB check violated section 5.2.2: For representations in the scope of the DVB-DASH 2017 profile, these shall be signalled. If present, the value of the @codecs attribute shall be set in accordance with RFC 5234   [28] . found  $codec \n");
+					 else 
+						fwrite($mpdreport, "###DVB warning section 5.2.2: For representations in the scope of the DVB-DASH 2014 profile, these should be signalled. If present, the value of the @codecs attribute shall be set in accordance with IETF RFC 5234  [28] found  $codec  .\n");
+				}
+			}
+			elseif($codec=='')
+		    {
+			
+		    }
+		    else
+		    {
+			    fwrite($mpdreport, "###DVB check violated section 5: onlny HEVC, AVC supported for video . found  $codec \n");
+		    }
         }
     }
     ##
@@ -1428,7 +1605,7 @@ function DVB_subtitle_checks($adapt, $reps, $mpdreport, $i){
     ##
 }
 
-function DVB_content_protection($adapt, $reps, $mpdreport, $i, $cenc){
+function DVB_content_protection($adapt, $reps, $mpdreport, $i, $cenc, $profiles=''){
     global $period_count;
     
     $mp4protection_count = 0;
@@ -1438,15 +1615,18 @@ function DVB_content_protection($adapt, $reps, $mpdreport, $i, $cenc){
         if($contentProtection_i->parentNode->nodeName != 'AdaptationSet')
             fwrite($mpdreport, "###'DVB check violated: Section 8.3- ContentProtection descriptor SHALL be placed at he AdaptationSet level', found at \"" . $contentProtection_i->parentNode->nodeName . "\" level in Period $period_count Adaptation Set " . ($i+1) . ".\n");
         else{
-            if($contentProtection_i->getAttribute('schemeIdUri') == 'urn:mpeg:dash:mp4protection:2011' && $contentProtection_i->getAttribute('value') == 'cenc'){
+            if($contentProtection_i->getAttribute('schemeIdUri') == 'urn:mpeg:dash:mp4protection:2011' && (($contentProtection_i->getAttribute('value') == 'cenc')|| $contentProtection_i->getAttribute('value') == 'cbcs')  ){
                 $mp4protection_count++;
                 $default_KIDs[] = $contentProtection_i->getAttribute('cenc:default_KID');
+				
+				if((strpos($profiles, 'urn:dvb:dash:profile:dvb-dash:2014') != FALSE) && ($contentProtection_i->getAttribute('value') == 'cbcs'))
+					fwrite($mpdreport, "###'DVB check violated: 8.6 AdaptationSets using the 'cbcs' scheme shall not be labelled with the 2014 DVB DASH profile URN urn:dvb:dash:profile:dvb-dash:2014. ', found at \"" . $contentProtection_i->parentNode->nodeName . "\" level in Period $period_count Adaptation Set " . ($i+1) . ".\n");
             }
         }
     }
     
     if($contentProtection->length != 0 && $mp4protection_count == 0){
-        fwrite($mpdreport, "###'DVB check violated: Section 8.4- Any Adaptation Set containing protected content SHALL contain one \"mp4protection\" ContentProtection descriptor with @schemeIdUri=\"urn:mped:dash:mp4protection:2011\" and @value=\"cenć\", not found in Period $period_count Adaptation Set " . ($i+1) . ".\n");
+        fwrite($mpdreport, "###'DVB check violated: Section 8.4- Any Adaptation Set containing protected content SHALL contain one \"mp4protection\" ContentProtection descriptor with @schemeIdUri=\"urn:mped:dash:mp4protection:2011\" and @value=\"cenc\" @value=\"cbcs\" or , not found in Period $period_count Adaptation Set " . ($i+1) . ".\n");
         if($cenc == '' || ($cenc != '' && empty($default_KIDs)))
             fwrite($mpdreport, "Warning for DVB check: Section 8.4- '\"mp4protection\" ContentProtection descriptor SHOULD include the extension defined in ISO/IEC 23001-7 clause 11.2', not found in Period $period_count Adaptation Set " . ($i+1) . ".\n");
     }
