@@ -250,12 +250,36 @@ function common_validation_DVB($opfile, $xml_rep, $media_types){
         foreach($nal_units as $nal_unit){
             $nalUnitType = $nal_unit->parentNode->getAttribute('nalUnitType');
             if($nalUnitType == '33'){
+				if( (int) $nal_unit->getAttribute('general_progressive_source_flag') != 1) 
+					fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3. general_progressive_source_flag shall be 1 found.'" . $nal_unit->getAttribute('general_progressive_source_flag') . ".\n");
+				if( (int) $nal_unit->getAttribute('general_frame_only_constraint_flag') != 1)
+					fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3. general_frame_only_constraint_flag shall be 1 found.'" . $nal_unit->getAttribute('general_frame_only_constraint_flag') . ".\n");
+				if( (int) $nal_unit->getAttribute(general_interlaced_source_flag) != 0)
+					fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3. general_interlaced_source_flag shall be 1 found.'" . $nal_unit->getAttribute('general_interlaced_source_flag') . ".\n");
+                if( (int) $nal_unit->getAttribute(compatibility_flag_1) == 1)
+				{ 
+					if((int) $nal_unit->getAttribute(bit_depth_luma_minus8) != 0)
+						fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3.compatibility_flag_1 shall be 1 bit_depth_luma_minus8 shall be 0 found.'" . $nal_unit->getAttribute('bit_depth_luma_minus8') . ".\n");
+					if((int) $nal_unit->getAttribute(bit_depth_chroma_minus8) != 0)
+						fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3.compatibility_flag_1 shall be 1 bit_depth_chroma_minus8 shall be 0 found.'" . $nal_unit->getAttribute('bit_depth_chroma_minus8') . ".\n");
+				}
+				else if ((int) $nal_unit->getAttribute(compatbility_flag_2) == 1)
+				{					
+					if((int) $nal_unit->getAttribute(bit_depth_luma_minus8) != 2 || (int) $nal_unit->getAttribute(bit_depth_luma_minus8) != 0)
+						fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3.compatibility_flag_2 is 1 bit_depth_luma_minus8 shall be 2 or 0 found.'" . $nal_unit->getAttribute('bit_depth_luma_minus8') . ".\n");
+					if((int) $nal_unit->getAttribute(bit_depth_chroma_minus8) != 2 || (int) $nal_unit->getAttribute(bit_depth_luma_minus8) != 0)
+						fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3.compatibility_flag_2 is 1 bit_depth_chroma_minus8 shall be 2 or 0 found.'" . $nal_unit->getAttribute('bit_depth_chroma_minus8') . ".\n");
+				    if( (int) $nal_unit->getAttribute(bit_depth_chroma_minus8) != (int) $nal_unit->getAttribute(bit_depth_luma_minus8))
+						fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: L3.3. bit_depth_luma_minus8 shall equal bit_depth_chroma_minus8 s'" . $nal_unit->getAttribute('bit_depth_chroma_minus8') . "and" . $nal_unit->getAttribute('bit_depth_luma_minus8') . ".\n");
+				}		
+				if( (int) $nal_unit->getAttribute(vui_parameters_present_flag) != 1)
+					fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: vui_parameters_present_flag shall be 1 found.'" . $nal_unit->getAttribute('vui_parameters_present_flag') . ".\n");
                 if($nal_unit->getAttribute('gen_tier_flag') != '0')
                     fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: Section 'Codec information' - tier used for the HEVC codec in Segment is not supported by the specification Section 5.2.3', found " . $nal_unit->getAttribute('gen_tier_flag') . ".\n");
                 if($nal_unit->getAttribute('bit_depth_luma_minus8') != 0 && $nal_unit->getAttribute('bit_depth_luma_minus8') != 2)
-                    fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: Section 'Codec information' - bit depth used for the HEVC codec in Segment is not supported by the specification Section 5.2.3', found " . $nal_unit->getAttribute('bit_depth_luma_minus8') . ".\n");
-                
-                if((int)$width <= 1920 && (int)$height <= 1080){
+                    fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: Section 'Codec information' - L3.3.' bit_depth_luma_minus8 is 0 or 2, found " . $nal_unit->getAttribute('bit_depth_luma_minus8') . ".\n");       
+                if((int)$width <= 1920 && (int)$height <= 1080)
+				{
                     if($nal_unit->getAttribute('gen_profile_idc') != '1' && $nal_unit->getAttribute('gen_profile_idc') != '2')
                         fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: Section 'Codec information' - profile used for the HEVC codec in Segment is not supported by the specification Section 5.2.3', found " . $nal_unit->getAttribute('gen_profile_idc') . ".\n");
                     if((int)($nal_unit->getAttribute('sps_max_sub_layers_minus1')) == 0 && (int)($nal_unit->getAttribute('gen_level_idc')) > 123)
@@ -446,7 +470,7 @@ function common_validation_DVB($opfile, $xml_rep, $media_types){
             if($hdlr_type =='soun' && $segDur>15)
                 fwrite($opfile, "###'DVB check violated Section 4.5: Where subsegments are not signalled, each audio segment SHALL have a duration of not more than 15 seconds', segment ".($j+1)." found with duration ".$segDur." \n");
             
-            if($segDur <1)
+            if($segDur < 0.96)
                 fwrite($opfile, "###'DVB check violated Section 4.5: Segment duration SHALL be at least 1 second except for the last segment of a Period', segment ".($j+1)." found with duration ".$segDur." \n");
         }
         elseif(!empty($subsegment_signaling) && !in_array(0, $subsegment_signaling)){
